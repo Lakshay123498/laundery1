@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laundry Booking System</title>
+    <link rel="stylesheet" href="style.css">
+
+    <title>Laundry Booking System</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        .container { max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ccc; border-radius: 10px; }
+        select, button { margin: 10px; padding: 10px; width: 100%; }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background: #f4f4f4; }
+        .admin-btn { background-color: #4CAF50; color: white; }
+        .admin-section { display: none; padding: 20px; background: #f9f9f9; margin-top: 20px; border-radius: 10px; border: 1px solid #ccc; }
+        .admin-table { margin-top: 20px; width: 100%; }
+        .admin-table th, .admin-table td { padding: 10px; text-align: center; }
+        .delete-btn { color: red; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Washing Machine & Dryer Booking</h2>
+        <label>Select Date:</label>
+        <input type="date" id="date">
+        
+        <label>Select Start Time:</label>
+        <select id="startTime"></select>
+        
+        <label>Select Machine Type:</label>
+        <select id="machineType" onchange="updateMachineNumbers()">
+            <option value="Washer">Washer (1.5 hrs)</option>
+            <option value="Dryer">Dryer (1 hr)</option>
+        </select>
+        
+        <label>Select Machine Number:</label>
+        <select id="machineNumber"></select>
+        
+        <button onclick="bookSlot()">Book Slot</button>
+        
+        <h3>Booked Slots</h3>
+        <table>
+            <tr>
+                <th>Name</th>
+                <th>Date</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Machine</th>
+                <th>Number</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+            <tbody id="bookingList"></tbody>
+        </table>
+
+        <button class="admin-btn" onclick="showAdminPanel()">Admin Panel</button>
+        
+        <div class="admin-section" id="adminSection">
+            <h3>Admin Panel</h3>
+            <label>Enter Admin Password:</label>
+            <input type="password" id="adminPassword" placeholder="Admin Password">
+            <button onclick="authenticateAdmin()">Submit</button>
+            
+            <h3>Manage Bookings</h3>
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Date</th>
+                        <th>Start Time</th>
+                        <th>End Time</th>
+                        <th>Machine</th>
+                        <th>Number</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="adminBookingList"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const adminPassword = 'admin123'; // Set the admin password
+        let bookings = getBookingsFromStorage();
+
+        // Show machine numbers based on the selected machine type
+        function updateMachineNumbers() {
+            let machineType = document.getElementById('machineType').value;
+            let machineNumberSelect = document.getElementById('machineNumber');
+            machineNumberSelect.innerHTML = '';
+            let machineCount = (machineType === 'Washer') ? 4 : 3;
+            for (let i = 1; i <= machineCount; i++) {
+                let option = document.createElement('option');
+                option.value = i;
+                option.textContent = i;
+                machineNumberSelect.appendChild(option);
+            }
+
+            // Update start time options based on machine type
+            let startTimeSelect = document.getElementById('startTime');
+            startTimeSelect.innerHTML = '';
+            let slots = (machineType === 'Washer') ? ['00:00', '01:30', '03:00', '04:30', '06:00', '07:30', '09:00', '10:30', '12:00', '13:30', '15:00', '16:30', '18:00', '19:30', '21:00', '22:30'] :
+                            ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00'];
+            slots.forEach(slot => {
+                let option = document.createElement('option');
+                option.value = slot;
+                option.textContent = slot;
+                startTimeSelect.appendChild(option);
+            });
+        }
+
+        // Book a slot
+        function bookSlot() {
+            let name = prompt("Enter your name:");
+            let date = document.getElementById('date').value;
+            let startTime = document.getElementById('startTime').value;
+            let machineType = document.getElementById('machineType').value;
+            let machineNumber = document.getElementById('machineNumber').value;
+            
+            // Calculate end time
+            let startHour = parseInt(startTime.split(':')[0]);
+            let duration = (machineType === 'Washer') ? 1.5 : 1;
+            let endHour = startHour + duration;
+            let endTime = (endHour < 10 ? '0' : '') + Math.floor(endHour) + ":00";
+            
+            let existingBooking = bookings.find(b => b.date === date && 
+                ((b.startTime >= startTime && b.startTime < endTime) ||
+                 (b.endTime > startTime && b.endTime <= endTime)) &&
+                b.machineType === machineType && b.machineNumber === machineNumber);
+                
+            if (existingBooking) {
+                alert('This slot is already booked!');
+                return;
+            }
+
+            let booking = { name, date, startTime, endTime, machineType, machineNumber, status: 'Booked' };
+            bookings.push(booking);
+
+            // Save bookings to localStorage with current timestamp
+            saveBookingsToStorage(bookings);
+
+            updateTable();
+            deleteOldBookings();
+        }
+
+        // Display bookings in the table
+        function updateTable() {
+            let table = document.getElementById('bookingList');
+            table.innerHTML = '';
+            bookings.forEach(b => {
+                let row = `<tr><td>${b.name}</td><td>${b.date}</td><td>${b.startTime}</td><td>${b.endTime}</td><td>${b.machineType}</td><td>${b.machineNumber}</td><td>${b.status}</td><td><button class="delete-btn" onclick="deleteBooking(${bookings.indexOf(b)})">Delete</button></td></tr>`;
+                table.innerHTML += row;
+            });
+        }
+
+        // Admin Panel: Show the panel for managing bookings
+        function showAdminPanel() {
+            document.getElementById('adminSection').style.display = 'block';
+        }
+
+        // Authenticate Admin
+        function authenticateAdmin() {
+            let enteredPassword = document.getElementById('adminPassword').value;
+            if (enteredPassword === adminPassword) {
+                loadAdminBookings();
+            } else {
+                alert('Incorrect password!');
+            }
+        }
+
+        // Load all bookings for admin to manage
+        function loadAdminBookings() {
+            let table = document.getElementById('adminBookingList');
+            table.innerHTML = '';
+            bookings.forEach((b, index) => {
+                let row = `<tr><td>${b.name}</td><td>${b.date}</td><td>${b.startTime}</td><td>${b.endTime}</td><td>${b.machineType}</td><td>${b.machineNumber}</td><td><button class="delete-btn" onclick="deleteBooking(${index})">Delete</button></td></tr>`;
+                table.innerHTML += row;
+            });
+        }
+
+        // Delete a booking
+        function deleteBooking(index) {
+            bookings.splice(index, 1); // Remove booking from array
+            saveBookingsToStorage(bookings); // Save updated data
+            updateTable(); // Update the regular table
+            loadAdminBookings(); // Refresh admin panel table
+        }
+
+        // Save bookings to localStorage with timestamp
+        function saveBookingsToStorage(bookings) {
+            let currentTimestamp = new Date().getTime();
+            localStorage.setItem('bookings', JSON.stringify({ data: bookings, timestamp: currentTimestamp }));
+        }
+
+        // Get bookings from localStorage
+        function getBookingsFromStorage() {
+            let storedData = JSON.parse(localStorage.getItem('bookings'));
+            if (storedData && storedData.timestamp) {
+                let currentTimestamp = new Date().getTime();
+                let timeDifference = currentTimestamp - storedData.timestamp;
+
+                // Check if the data is older than 2 weeks (14 days = 14 * 24 * 60 * 60 * 1000 ms)
+                if (timeDifference > (14 * 24 * 60 * 60 * 1000)) {
+                    localStorage.removeItem('bookings'); // Remove data if older than 2 weeks
+                    return [];
+                }
+                return storedData.data; // Return the stored bookings if still valid
+            }
+            return []; // Return empty array if no valid data
+        }
+
+        // Delete old bookings that are older than 2 weeks
+        function deleteOldBookings() {
+            let currentDate = new Date();
+            bookings = bookings.filter(b => {
+                let bookingDate = new Date(b.date);
+                let diffInTime = currentDate - bookingDate;
+                let diffInDays = diffInTime / (1000 * 3600 * 24);
+                return diffInDays <= 14;
+            });
+
+            // Save the updated bookings to localStorage
+            saveBookingsToStorage(bookings);
+
+            updateTable();
+        }
+
+        // Initialize machine numbers and load bookings from localStorage
+        updateMachineNumbers();
+        updateTable();
+
+    </script>
+</body>
+</html>
